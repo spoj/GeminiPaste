@@ -1,0 +1,3 @@
+[Gemini]
+ApiKey=<API>
+SystemPrompt="if an image of a table, return a table in tab-separated format; if other image, OCR if possible; otherwise, either summarize or explain to make it easier to understand."

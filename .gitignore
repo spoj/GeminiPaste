@@ -1,0 +1,4 @@
+target/
+gemini_processor.exe
+gemini_processor_error.log
+config.ini
