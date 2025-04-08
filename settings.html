@@ -56,6 +56,18 @@
              <input type="text" id="hotkeyKey" maxlength="1" placeholder="Key (e.g., V)">
         </div>
 
+        <label for="presetPrompts">Preset Prompts (comma-separated):</label>
+        <input type="text" id="presetPrompts" placeholder="e.g., Summarize,To Table,Explain">
+
+        <label for="model">Model:</label>
+        <select id="model">
+            <option value="google/gemini-2.0-flash-001">Gemini 2.0 Flash</option>
+            <option value="meta/llama-3-70b-instruct">Llama 3 70B Instruct</option>
+            <option value="mistralai/Mistral-medium">Mistral Medium</option>
+        </select>
+
+        <label for="providerOrder">Provider Order (comma-separated):</label>
+        <input type="text" id="providerOrder" placeholder="e.g., Google,Anthropic">
 
         <button id="saveButton">Save Settings</button>
         <div id="statusMessage" class="status"></div>

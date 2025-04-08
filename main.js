@@ -10,7 +10,14 @@ const store = new Store({
     defaults: {
         apiKey: '',
         hotkeyModifier: 'Shift',
-        hotkeyKey: 'V'
+        hotkeyKey: 'V',
+        presetPrompts: [ // Changed to array of objects
+            { name: 'Summarize', prompt: 'Summarize' },
+            { name: 'To Table', prompt: 'Convert to a tab-separated table' },
+            { name: 'Explain', prompt: 'Explain' }
+        ],
+        model: 'google/gemini-2.0-flash-001',
+        providerOrder: ['Google']
     }
 });
 
@@ -270,7 +277,7 @@ async function callApi(inputText, imageContent, userPrompt) {
         throw new Error("API Key is missing. Please configure it in Settings.");
     }
 
-    const model = 'google/gemini-2.0-flash-001';
+    const model = store.get('model');
     const url = 'https://openrouter.ai/api/v1/chat/completions';
 
     console.log(`Calling OpenRouter API (${model}) with prompt: "${userPrompt}"`);
@@ -278,14 +285,15 @@ async function callApi(inputText, imageContent, userPrompt) {
     // Construct messages array (OpenAI format)
     let messages = [];
 
-    // Optional system message
-    // messages.push({ role: "system", content: "You are a helpful assistant." });
+    // System message (User's selected/typed prompt)
+    if (userPrompt) { // Ensure prompt isn't empty
+        messages.push({ role: "system", content: userPrompt });
+    }
 
     // User message (prompt + content)
     let userMessageContent = [];
 
-    // Add prompt text
-    userMessageContent.push({ type: "text", text: userPrompt });    
+    // User prompt is now sent as system message, removed from here.
 
     // Add clipboard text (if provided)
     if (inputText) {
@@ -305,8 +313,8 @@ async function callApi(inputText, imageContent, userPrompt) {
         console.log('Preparing image content for API, mime-type inferred from data URL.');
     }
 
-    // Ensure some content (text or image) was added besides the prompt itself
-    if (userMessageContent.length <= 1) { // Only prompt text was added
+    // Ensure some content (text or image) was added
+    if (userMessageContent.length === 0) { // Check if anything was added (text or image)
          console.error('No text or image content provided for API call.');
          throw new Error("No text or image content provided for API call.");
     }
@@ -316,7 +324,7 @@ async function callApi(inputText, imageContent, userPrompt) {
     const requestBody = {
         model: model,
         messages: messages,
-        provider: {order: ["Google"]}
+        provider: { order: store.get('providerOrder') }
         // Optional parameters:
         // temperature: 0.7,
         // max_tokens: 1024,
@@ -424,7 +432,10 @@ ipcMain.handle('get-config', (event) => {
     return {
         apiKey: store.get('apiKey'),
         hotkeyModifier: store.get('hotkeyModifier'),
-        hotkeyKey: store.get('hotkeyKey')
+        hotkeyKey: store.get('hotkeyKey'),
+        presetPrompts: store.get('presetPrompts'),
+        model: store.get('model'),
+        providerOrder: store.get('providerOrder')
     };
 });
 
@@ -432,7 +443,9 @@ ipcMain.handle('set-config', (event, newConfig) => {
     try {
         console.log('Received new config:', newConfig);
         if (newConfig.apiKey !== undefined) store.set('apiKey', newConfig.apiKey);
-
+        if (newConfig.presetPrompts !== undefined) store.set('presetPrompts', newConfig.presetPrompts);
+        if (newConfig.model !== undefined) store.set('model', newConfig.model);
+        if (newConfig.providerOrder !== undefined) store.set('providerOrder', newConfig.providerOrder);
         // Hotkey update requires re-registering
         let shortcutChanged = false;
         if (newConfig.hotkeyModifier !== undefined && newConfig.hotkeyModifier !== store.get('hotkeyModifier')) {

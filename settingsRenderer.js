@@ -3,6 +3,9 @@ console.log('settingsRenderer.js executing');
 const apiKeyInput = document.getElementById('apiKey');
 const modifierSelect = document.getElementById('hotkeyModifier');
 const keyInput = document.getElementById('hotkeyKey');
+const presetPromptsInput = document.getElementById('presetPrompts');
+const modelSelect = document.getElementById('model');
+const providerOrderInput = document.getElementById('providerOrder');
 const saveButton = document.getElementById('saveButton');
 const statusMessage = document.getElementById('statusMessage');
 
@@ -16,6 +19,9 @@ window.addEventListener('DOMContentLoaded', async () => {
             apiKeyInput.value = config.apiKey || '';
             modifierSelect.value = config.hotkeyModifier || 'Shift';
             keyInput.value = config.hotkeyKey || 'V';
+            presetPromptsInput.value = config.presetPrompts || 'Summarize,To Table,Explain';
+            modelSelect.value = config.model || 'google/gemini-2.0-flash-001';
+            providerOrderInput.value = config.providerOrder ? config.providerOrder.join(',') : 'Google';
         } else {
              console.error('Failed to load config or config is empty.');
              statusMessage.textContent = 'Error: Could not load settings.';
@@ -33,7 +39,10 @@ saveButton.addEventListener('click', async () => {
     const newConfig = {
         apiKey: apiKeyInput.value.trim(),
         hotkeyModifier: modifierSelect.value,
-        hotkeyKey: keyInput.value.trim().toUpperCase() // Ensure key is uppercase
+        hotkeyKey: keyInput.value.trim().toUpperCase(), // Ensure key is uppercase
+        presetPrompts: presetPromptsInput.value.trim(),
+        model: modelSelect.value,
+        providerOrder: providerOrderInput.value.trim().split(',')
     };
 
     // Basic validation for the key

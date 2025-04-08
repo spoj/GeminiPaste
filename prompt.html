@@ -64,13 +64,27 @@
             background-color: #3b4048; /* Subtle hover background */
         }
 
+        #main-content-area {
+            flex-grow: 1; /* Takes up remaining vertical space */
+            position: relative; /* For absolute positioning of children */
+            overflow: hidden; /* Prevent content spillover */
+        }
+
+        .container, #settings-view { /* Style both views */
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            box-sizing: border-box; /* Include padding in width/height */
+        }
 
         .container {
             padding: 10px 15px;
-            flex-grow: 1;
-            display: flex;
+            /* flex-grow: 1; Removed */
+            display: flex; /* Keep flex for internal layout */
             flex-direction: column;
-            overflow: hidden;
+            /* overflow: hidden; Removed */
         }
 
         #clipboard-content {
@@ -83,6 +97,7 @@
             font-size: 13px;
             white-space: pre-wrap;
             word-wrap: break-word;
+            flex-shrink: 0; /* Prevent shrinking */
         }
         #clipboard-content img {
             max-width: 100%;
@@ -93,6 +108,7 @@
 
         .prompt-section {
             margin-bottom: 10px;
+            flex-shrink: 0; /* Prevent shrinking */
         }
 
         .prompt-buttons button,
@@ -195,9 +211,10 @@
         #settings-view {
             display: none; /* Hidden by default */
             padding: 15px 20px;
-            flex-grow: 1;
-            overflow-y: auto;
+            /* flex-grow: 1; Removed */
+            overflow-y: auto; /* Allow scrolling within settings */
             background-color: #282c34; /* Match body background */
+            /* Position styles moved to shared rule */
         }
         #settings-view h2 {
             color: #61afef; /* Accent color for heading */
@@ -216,7 +233,8 @@
         }
         #settings-view input[type="text"],
         #settings-view input[type="password"],
-        #settings-view select {
+        #settings-view select,
+        #settings-view textarea { /* Added textarea */
             width: calc(100% - 18px); /* Account for padding */
             padding: 8px;
             margin-bottom: 15px;
@@ -225,6 +243,8 @@
             background-color: #21252b; /* Dark input background */
             color: #abb2bf; /* Theme text color */
             font-size: 0.9em;
+            font-family: inherit; /* Ensure textarea uses same font */
+            box-sizing: border-box; /* Consistent box model */
         }
         #settings-view .hotkey-group {
             display: flex;
@@ -280,7 +300,8 @@
         <button class="settings-button" id="settings-btn" title="Settings">⚙️</button> <!-- Gear icon -->
         <button class="close-button" id="close-btn" title="Close">X</button>
     </div>
-    <div class="container">
+    <div id="main-content-area"> <!-- New Wrapper -->
+        <div class="container"> <!-- Moved Inside -->
         <div id="clipboard-content" contenteditable="false">Loading clipboard content...</div>
 
         <div class="prompt-section">
@@ -298,15 +319,21 @@
             <div class="loading-indicator" id="loading">Processing...</div>
             <button id="copy-button" title="Copy output and close">Copy</button>
         </div>
-    </div>
- 
-    <!-- Settings View (Initially Hidden) -->
+        </div> <!-- Close .container -->
+
+        <!-- Settings View (Moved Inside Wrapper) -->
     <div id="settings-view">
         <h2>Settings</h2>
  
         <label for="apiKey">OpenRouter API Key:</label>
         <input type="password" id="apiKey" placeholder="Enter your API Key">
- 
+
+        <label for="model">Model:</label>
+        <input type="text" id="model" placeholder="e.g., google/gemini-2.0-flash-001">
+
+        <label for="providerOrder">Provider Order (comma-separated):</label>
+        <input type="text" id="providerOrder" placeholder="e.g., Google,Anthropic">
+
         <label>Global Hotkey:</label>
         <div class="hotkey-group">
              <span>Ctrl/Cmd +</span>
@@ -318,13 +345,18 @@
              <span class="hotkey-plus">+</span>
              <input type="text" id="hotkeyKey" maxlength="1" placeholder="Key (e.g., V)">
         </div>
- 
+
+
+        <label for="presetPrompts">Preset Prompts (JSON Array of {name, prompt}):</label>
+        <textarea id="presetPrompts" rows="8" placeholder='[{"name": "Summarize", "prompt": "Summarize text:"}]'></textarea> <!-- Updated placeholder and rows -->
+
         <div>
             <button id="saveButton">Save Settings</button>
             <button id="backButton">Back</button>
         </div>
         <div id="statusMessage" class="status"></div>
-    </div>
+        </div> <!-- Close #settings-view -->
+    </div> <!-- Close #main-content-area -->
 
     <script src="./node_modules/marked/marked.min.js"></script>
     <script>
@@ -445,26 +477,25 @@
         const closeButton = document.getElementById('close-btn');
         const settingsButton = document.getElementById('settings-btn'); // In main view header
         const loadingIndicator = document.getElementById('loading');
-        const promptButtons = document.querySelectorAll('.prompt-buttons button');
+        const promptButtonsContainer = document.querySelector('.prompt-buttons'); // Get the container div
  
         // --- Settings View Elements ---
-        const mainContainer = document.querySelector('.container'); // Main prompt view container
+        const mainContentArea = document.getElementById('main-content-area'); // The new wrapper
+        const mainContainer = document.querySelector('.container'); // The original container (now inside wrapper)
         const settingsView = document.getElementById('settings-view');
         const apiKeyInput = document.getElementById('apiKey');
         const hotkeyModifierSelect = document.getElementById('hotkeyModifier');
         const hotkeyKeyInput = document.getElementById('hotkeyKey');
+        const presetPromptsTextarea = document.getElementById('presetPrompts'); // New
+        const modelSelect = document.getElementById('model'); // New
+        const providerOrderInput = document.getElementById('providerOrder'); // New
         const saveButton = document.getElementById('saveButton');
         const backButton = document.getElementById('backButton');
         const statusMessageEl = document.getElementById('statusMessage');
 
         // --- UI Event Listeners ---
 
-        promptButtons.forEach(button => {
-            button.addEventListener('click', () => {
-                const promptText = button.getAttribute('data-prompt');
-                sendPrompt('predefined', promptText);
-            });
-        });
+        // Button listeners will be added dynamically in updatePresetButtons
 
         customPromptInput.addEventListener('keypress', (event) => {
             if (event.key === 'Enter' && customPromptInput.value.trim() !== '') {
@@ -526,7 +557,7 @@
 
             // Disable inputs during processing
             customPromptInput.disabled = true;
-            promptButtons.forEach(b => b.disabled = true);
+            promptButtonsContainer.querySelectorAll('button').forEach(b => b.disabled = true); // Disable dynamically generated buttons
             if (isInputEditable) clipboardContentEl.contentEditable = 'false';
 
             // Send prompt data to main process
@@ -541,7 +572,7 @@
         function showMainView() {
             console.log('[Renderer] Showing Main View');
             settingsView.style.display = 'none';
-            mainContainer.style.display = 'flex'; // Assuming it was flex before
+            mainContainer.style.display = 'flex'; // Show the original container
             currentView = 'main';
             // Restore focus to prompt input if returning to main view
             if(customPromptInput) customPromptInput.focus();
@@ -549,12 +580,42 @@
  
         async function showSettingsView() {
             console.log('[Renderer] Showing Settings View');
-            mainContainer.style.display = 'none';
-            settingsView.style.display = 'block';
+            mainContainer.style.display = 'none'; // Hide the original container
+            settingsView.style.display = 'block'; // Show the settings view
             currentView = 'settings';
             await loadSettings(); // Load settings when view is shown
             // Focus first settings element
-            if(apiKeyInput) apiKeyInput.focus();
+            if (apiKeyInput) apiKeyInput.focus();
+        }
+ 
+        // --- Function to Update Preset Buttons ---
+        function updatePresetButtons(promptsArray) {
+            if (!promptButtonsContainer) {
+                console.error('[Renderer] Cannot find prompt buttons container!');
+                return;
+            }
+            console.log('[Renderer] Updating preset buttons with:', promptsArray);
+            promptButtonsContainer.innerHTML = ''; // Clear existing buttons
+ 
+            if (!Array.isArray(promptsArray)) {
+                 console.warn('[Renderer] Invalid promptsArray received, defaulting to empty.');
+                 promptsArray = [];
+            }
+ 
+            promptsArray.forEach(promptData => {
+                if (promptData && promptData.name && promptData.prompt) {
+                    const button = document.createElement('button');
+                    button.textContent = promptData.name;
+                    button.setAttribute('data-prompt', promptData.prompt);
+                    button.addEventListener('click', () => {
+                        // Use the actual prompt value from the attribute
+                        sendPrompt('predefined', button.getAttribute('data-prompt'));
+                    });
+                    promptButtonsContainer.appendChild(button);
+                } else {
+                     console.warn('[Renderer] Skipping invalid prompt data:', promptData);
+                }
+            });
         }
  
         // --- Settings Load/Save Functions ---
@@ -564,11 +625,21 @@
             statusMessageEl.className = 'status'; // Reset class
             try {
                 const config = await window.electronAPI.getConfig();
-                console.log('[Renderer] Received config:', config);
+                console.log('[Renderer] Received config for settings view:', config);
                 if (config) {
                     apiKeyInput.value = config.apiKey || '';
                     hotkeyModifierSelect.value = config.hotkeyModifier || 'Shift';
                     hotkeyKeyInput.value = config.hotkeyKey || 'V';
+                    modelSelect.value = config.model || 'google/gemini-2.0-flash-001'; // Keep this for the input field
+                    providerOrderInput.value = config.providerOrder ? config.providerOrder.join(',') : 'Google';
+                    // Format preset prompts as JSON for textarea
+                    try {
+                        presetPromptsTextarea.value = JSON.stringify(config.presetPrompts || [], null, 2); // Pretty-print JSON
+                    } catch (e) {
+                        console.error("Error stringifying preset prompts:", e);
+                        presetPromptsTextarea.value = '[]'; // Default to empty array on error
+                    }
+                    // No need to call updatePresetButtons here, it's called on initial load and save
                     statusMessageEl.textContent = ''; // Clear loading message
                 } else {
                      throw new Error('Received empty config from main process.');
@@ -588,14 +659,33 @@
             const newConfig = {
                 apiKey: apiKeyInput.value,
                 hotkeyModifier: hotkeyModifierSelect.value,
-                hotkeyKey: hotkeyKeyInput.value.toUpperCase() // Ensure key is uppercase
-            };
- 
+                hotkeyKey: hotkeyKeyInput.value.toUpperCase(), // Ensure key is uppercase
+                model: modelSelect.value,
+                providerOrder: providerOrderInput.value.trim().split(',').map(p => p.trim()).filter(p => p), // Split, trim, remove empty
+                presetPrompts: null // Placeholder, will be set below
+            }; // End of initial newConfig definition
+
+            // Parse preset prompts JSON and add to newConfig
+            try {
+                const parsedPrompts = JSON.parse(presetPromptsTextarea.value);
+                if (!Array.isArray(parsedPrompts)) {
+                    throw new Error("Preset Prompts must be a JSON array.");
+                }
+                // Optional: Add validation for each object in the array
+                newConfig.presetPrompts = parsedPrompts; // Assign parsed prompts
+            } catch (error) {
+                statusMessageEl.textContent = `Error parsing Preset Prompts JSON: ${error.message}`;
+                statusMessageEl.className = 'status error';
+                return; // Stop saving if JSON is invalid
+            }
+
+            // Now attempt to set the config with the fully constructed newConfig object
             try {
                 const result = await window.electronAPI.setConfig(newConfig);
                 console.log('[Renderer] Set config result:', result);
                 if (result && result.success) {
                     statusMessageEl.textContent = 'Settings saved successfully!';
+                    updatePresetButtons(newConfig.presetPrompts); // Update buttons immediately after save
                     // Optionally auto-go back after save:
                     // setTimeout(showMainView, 1500);
                 } else {
@@ -606,18 +696,38 @@
                 statusMessageEl.textContent = `Error saving settings: ${error.message}`;
                 statusMessageEl.className = 'status error';
             }
-        }
+
+        } // Close saveSettings function
  
         // --- Initial Setup ---
-        // Initial focus on custom prompt input when window loads (only if starting in main view)
-        if(currentView === 'main' && customPromptInput) {
-            customPromptInput.focus();
-            console.log('[Renderer] Focused custom prompt input.');
-        } else if (currentView !== 'main') {
-             console.log('[Renderer] Initial view is not main, skipping initial focus.');
-        } else {
-             console.error('[Renderer] Cannot find custom prompt input element for focus!');
+        async function initializeApp() {
+             console.log('[Renderer] Initializing app...');
+             try {
+                 const initialConfig = await window.electronAPI.getConfig();
+                 console.log('[Renderer] Received initial config for button setup:', initialConfig);
+                 if (initialConfig && initialConfig.presetPrompts) {
+                     updatePresetButtons(initialConfig.presetPrompts);
+                 } else {
+                      console.warn('[Renderer] No initial preset prompts found in config. Using defaults or empty.');
+                      updatePresetButtons([]); // Or load defaults if desired
+                 }
+             } catch (error) {
+                 console.error('[Renderer] Error loading initial config for buttons:', error);
+                 updatePresetButtons([]); // Show no buttons on error
+             }
+ 
+             // Initial focus on custom prompt input when window loads (only if starting in main view)
+             if(currentView === 'main' && customPromptInput) {
+                 customPromptInput.focus();
+                 console.log('[Renderer] Focused custom prompt input.');
+             } else if (currentView !== 'main') {
+                  console.log('[Renderer] Initial view is not main, skipping initial focus.');
+             } else {
+                  console.error('[Renderer] Cannot find custom prompt input element for focus!');
+             }
         }
+ 
+        initializeApp(); // Call the initialization function
 
     </script>
 </body>
