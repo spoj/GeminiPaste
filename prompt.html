@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <!-- CSP for Electron -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;">
+    <title>Gemini Paste Helper</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #282c34;
+            color: #abb2bf;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+            border: 1px solid #3b4048;
+            border-radius: 5px;
+        }
+
+        .window-controls {
+            display: flex;
+            justify-content: flex-end;
+            padding: 5px;
+            background-color: #3b4048;
+            -webkit-app-region: drag;
+        }
+
+        .close-button {
+            background-color: #e06c75;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 18px;
+            height: 18px;
+            font-size: 10px;
+            line-height: 18px;
+            text-align: center;
+            cursor: pointer;
+            -webkit-app-region: no-drag;
+            margin-left: 5px;
+        }
+        .close-button:hover {
+            background-color: #be5046;
+        }
+
+        .container {
+            padding: 10px 15px;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        #clipboard-content {
+            background-color: #3b4048;
+            padding: 8px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            max-height: 100px;
+            overflow-y: auto;
+            font-size: 13px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        #clipboard-content img {
+            max-width: 100%;
+            max-height: 90px;
+            display: block;
+            margin: auto;
+        }
+
+        .prompt-section {
+            margin-bottom: 10px;
+        }
+
+        .prompt-buttons button,
+        #custom-prompt-submit {
+            background-color: #61afef;
+            color: #282c34;
+            border: none;
+            padding: 6px 12px;
+            margin: 3px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        .prompt-buttons button:hover,
+        #custom-prompt-submit:hover {
+            background-color: #528bce;
+        }
+
+        #custom-prompt-input {
+            width: calc(100% - 16px);
+            padding: 6px 8px;
+            margin-top: 5px;
+            border: 1px solid #3b4048;
+            border-radius: 4px;
+            background-color: #21252b;
+            color: #abb2bf;
+            font-size: 13px;
+        }
+
+        #output-section {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative; /* Needed for absolute positioning of copy button */
+            background-color: #21252b;
+            border-radius: 4px;
+            padding: 8px;
+        }
+
+        #llm-output {
+            flex-grow: 1;
+            overflow-y: auto;
+            font-size: 14px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        #copy-button {
+            position: absolute;
+            bottom: 8px;
+            right: 8px;
+            background-color: #98c379;
+            color: #282c34;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            display: none;
+        }
+        #copy-button:hover {
+            background-color: #89b16a;
+        }
+
+        .loading-indicator {
+            text-align: center;
+            padding: 10px;
+            font-style: italic;
+            color: #61afef;
+            display: none;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="window-controls">
+        <button class="close-button" id="close-btn" title="Close">X</button>
+    </div>
+    <div class="container">
+        <div id="clipboard-content" contenteditable="false">Loading clipboard content...</div>
+
+        <div class="prompt-section">
+            <div class="prompt-buttons">
+                <button data-prompt="summarize">Summarize</button>
+                <button data-prompt="convert to tab separated table">To Table</button>
+                <button data-prompt="explain">Explain</button>
+            </div>
+            <input type="text" id="custom-prompt-input" placeholder="Or type your custom prompt here and press Enter">
+            <!-- <button id="custom-prompt-submit">Submit</button> -->
+        </div>
+
+        <div id="output-section">
+            <div id="llm-output"></div>
+            <div class="loading-indicator" id="loading">Processing...</div>
+            <button id="copy-button" title="Copy output and close">Copy</button>
+        </div>
+    </div>
+
+    <script>
+        console.log('[Renderer] Script execution started.');
+        console.log('[Renderer] window.electronAPI object:', typeof window.electronAPI);
+
+        // --- State Variables ---
+        let initialClipboardContent = null; // Stores the { type, data } from clipboard
+        let isInputEditable = false; // Tracks if #clipboard-content is currently editable
+
+        // --- IPC Listeners (Main -> Renderer) ---
+
+        if (window.electronAPI?.onClipboardContent) {
+             window.electronAPI.onClipboardContent((content) => {
+                console.log('[Renderer] Received clipboard-content event:', { type: content?.type, dataLength: content?.data?.length });
+                initialClipboardContent = content;
+                const clipboardContentEl = document.getElementById('clipboard-content');
+                const llmOutputEl = document.getElementById('llm-output');
+                const copyButton = document.getElementById('copy-button');
+                const loadingIndicator = document.getElementById('loading');
+                const customPromptInput = document.getElementById('custom-prompt-input');
+                const promptButtons = document.querySelectorAll('.prompt-buttons button');
+
+                if (!clipboardContentEl || !llmOutputEl || !copyButton || !loadingIndicator || !customPromptInput) {
+                    console.error('[Renderer] Cannot find one or more required elements for reset!');
+                    return;
+                }
+
+                // Reset UI state for new content
+                llmOutputEl.innerHTML = '';
+                copyButton.style.display = 'none';
+                loadingIndicator.style.display = 'none';
+                customPromptInput.disabled = false;
+                promptButtons.forEach(b => b.disabled = false);
+                // Update input area
+                isInputEditable = false;
+                clipboardContentEl.contentEditable = 'false';
+                clipboardContentEl.innerHTML = '';
+
+                if (content.type === 'text') {
+                    clipboardContentEl.textContent = content.data || '(Clipboard is empty)';
+                    clipboardContentEl.contentEditable = 'true';
+                    isInputEditable = true;
+                    console.log('[Renderer] Set clipboard content editable.');
+                } else if (content.type === 'image') {
+                    const img = document.createElement('img');
+                    img.src = content.data;
+                    clipboardContentEl.appendChild(img);
+                } else {
+                    clipboardContentEl.textContent = '(Clipboard content not supported or empty)';
+                }
+            });
+            console.log('[Renderer] onClipboardContent listener registered.');
+        } else {
+            console.error('[Renderer] window.electronAPI.onClipboardContent is not available!');
+        }
+
+
+        if (window.electronAPI?.onLLMResponse) {
+            window.electronAPI.onLLMResponse((responseChunk) => {
+                // console.log('[Renderer] Received llm-response event:', responseChunk); // Very noisy, disable for now
+                const llmOutputEl = document.getElementById('llm-output');
+                const copyButton = document.getElementById('copy-button');
+                const loadingIndicator = document.getElementById('loading');
+                if (!llmOutputEl || !copyButton || !loadingIndicator) {
+                     console.error('[Renderer] Cannot find output/copy/loading elements!');
+                     return;
+                }
+
+                loadingIndicator.style.display = 'none';
+                if (responseChunk === '__LLM_STREAM_END__') {
+                    copyButton.style.display = 'block';
+                    console.log('[Renderer] LLM Stream ended.');
+
+                    // Auto-select output text
+                    if (llmOutputEl.textContent.trim().length > 0) {
+                        try {
+                            const range = document.createRange();
+                            range.selectNodeContents(llmOutputEl);
+                            const selection = window.getSelection();
+                            selection.removeAllRanges();
+                            selection.addRange(range);
+                            console.log('[Renderer] Selected output text.');
+                        } catch (err) {
+                            console.error('[Renderer] Error selecting text:', err);
+                        }
+                    }
+
+                    // Re-enable inputs after completion
+                    const customPromptInput = document.getElementById('custom-prompt-input');
+                    const promptButtons = document.querySelectorAll('.prompt-buttons button');
+                    if(customPromptInput) customPromptInput.disabled = false;
+                    promptButtons.forEach(b => b.disabled = false);
+                } else if (responseChunk) {
+                    const chunkNode = document.createTextNode(responseChunk);
+                    llmOutputEl.appendChild(chunkNode);
+                    llmOutputEl.scrollTop = llmOutputEl.scrollHeight; // Auto-scroll
+                }
+            });
+             console.log('[Renderer] onLLMResponse listener registered.');
+        } else {
+             console.error('[Renderer] window.electronAPI.onLLMResponse is not available!');
+        }
+
+        // --- Get Element References ---
+        const clipboardContentEl = document.getElementById('clipboard-content');
+        const customPromptInput = document.getElementById('custom-prompt-input');
+        const llmOutputEl = document.getElementById('llm-output');
+        const copyButton = document.getElementById('copy-button');
+        const closeButton = document.getElementById('close-btn');
+        const loadingIndicator = document.getElementById('loading');
+        const promptButtons = document.querySelectorAll('.prompt-buttons button');
+
+        // --- UI Event Listeners ---
+
+        promptButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                const promptText = button.getAttribute('data-prompt');
+                sendPrompt('predefined', promptText);
+            });
+        });
+
+        customPromptInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter' && customPromptInput.value.trim() !== '') {
+                sendPrompt('custom', customPromptInput.value.trim());
+            }
+        });
+
+        copyButton.addEventListener('click', () => {
+            const outputText = llmOutputEl.textContent;
+            if (outputText) {
+                window.electronAPI.copyAndClose(outputText);
+            } else {
+                 console.warn('[Renderer] Copy button clicked, but no output text found.');
+                 window.electronAPI.closeWindow(); // Close even if nothing to copy
+            }
+        });
+
+        closeButton.addEventListener('click', () => {
+            console.log('[Renderer] Close button clicked.');
+            window.electronAPI.closeWindow();
+        });
+
+        // Listeners moved above element selection
+
+        // --- Core Logic ---
+        function sendPrompt(promptType, promptValue) {
+            // Ensure initial content is loaded before sending prompt
+            if (!initialClipboardContent) {
+                 console.warn('[Renderer] Cannot send prompt: No initial clipboard content was loaded.');
+                 // TODO: Optionally display this error to the user in the UI
+                 return;
+            }
+
+            let inputText = null; // Will be sent to main process
+            if (isInputEditable) {
+                inputText = clipboardContentEl.textContent;
+                console.log('[Renderer] Using edited input text.');
+            } else if (initialClipboardContent?.type === 'text') {
+                inputText = initialClipboardContent.data;
+                console.log('[Renderer] Using initial clipboard text.');
+            } else if (initialClipboardContent?.type === 'image') {
+                 console.log('[Renderer] Proceeding with image input (inputText is null).');
+                 // inputText remains null for image prompts
+            }
+
+            console.log(`[Renderer] Sending prompt - Type: ${promptType}, Value: ${promptValue}, Input Text Length: ${inputText?.length}`);
+
+            // Reset output UI
+            llmOutputEl.innerHTML = '';
+            copyButton.style.display = 'none';
+            loadingIndicator.style.display = 'block';
+
+            // Disable inputs during processing
+            customPromptInput.disabled = true;
+            promptButtons.forEach(b => b.disabled = true);
+            if (isInputEditable) clipboardContentEl.contentEditable = 'false';
+
+            // Send prompt data to main process
+            window.electronAPI.sendPromptSelection({
+                type: promptType,
+                value: promptValue,
+                inputText: inputText
+            });
+        }
+
+        // Initial focus on custom prompt input when window loads
+        if(customPromptInput) {
+            customPromptInput.focus();
+            console.log('[Renderer] Focused custom prompt input.');
+        } else {
+             console.error('[Renderer] Cannot find custom prompt input element for focus!');
+        }
+
+    </script>
+</body>
+</html>
