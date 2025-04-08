@@ -1,23 +1,31 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  // --- Renderer to Main ---
-
+  // --- Renderer to Main (ipcRenderer.send for one-way) ---
+ 
   // Send the selected prompt (predefined or custom) to the main process
   sendPromptSelection: (promptData) => {
-    // promptData should be an object like { type: 'predefined'/'custom', value: 'prompt text' }
+    // promptData should be an object like { type: 'predefined'/'custom', value: 'prompt text', inputText: '...' }
     ipcRenderer.send('prompt-selected', promptData);
   },
-
+ 
   // Tell the main process to copy the provided text and close the window
   copyAndClose: (textToCopy) => {
     ipcRenderer.send('copy-and-close', textToCopy);
   },
-
+ 
   // Tell the main process to close the window (e.g., from 'X' button)
   closeWindow: () => {
     ipcRenderer.send('close-prompt-window');
   },
+ 
+  // --- Renderer to Main (ipcRenderer.invoke for two-way/async) ---
+ 
+  // Get current configuration from main process
+  getConfig: () => ipcRenderer.invoke('get-config'),
+ 
+  // Send new configuration to main process to save
+  setConfig: (newConfig) => ipcRenderer.invoke('set-config', newConfig),
 
   // --- Main to Renderer ---
 

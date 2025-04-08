@@ -1,27 +1,20 @@
 const { app, BrowserWindow, Tray, Menu, globalShortcut, clipboard, ipcMain } = require('electron');
 const path = require('path');
 const axios = require('axios');
-const ini = require('ini');
-const fs = require('fs');
+const Store = require('electron-store').default;
 
 let tray = null;
 let mainWindow = null;
-let config = {};
-
-function readConfig() {
-    try {
-        const configPath = path.join(__dirname, 'config.ini');
-        if (fs.existsSync(configPath)) {
-            config = ini.parse(fs.readFileSync(configPath, 'utf-8'));
-        } else {
-            console.error('config.ini not found. Please create one based on config.ini.sample');
-            config = { API: { Key: '' }, Hotkey: { Modifier: 'Shift', Key: 'V' } };
-        }
-    } catch (error) {
-        console.error('Error reading config.ini:', error);
-        config = { API: { Key: '' }, Hotkey: { Modifier: 'Shift', Key: 'V' } };
+// Initialize electron-store with defaults
+const store = new Store({
+    defaults: {
+        apiKey: '',
+        hotkeyModifier: 'Shift',
+        hotkeyKey: 'V'
     }
-}
+});
+
+// let settingsWindow = null; // Removed - Settings now in prompt window
 
 // Main window creation (currently unused, kept for potential future use)
 function createWindow() {
@@ -49,7 +42,9 @@ function createTray() {
     tray = new Tray(iconPath);
 
     const contextMenu = Menu.buildFromTemplate([
-        // { label: 'Show App', click: () => mainWindow?.show() }, // Example action if main window is used
+        // { label: 'Show App', click: () => mainWindow?.show() },
+        // { label: 'Settings', click: createSettingsWindow }, // Removed - Settings now in prompt window
+        { type: 'separator' },
         { label: 'Exit', click: () => {
             app.isQuitting = true;
             app.quit();
@@ -61,8 +56,8 @@ function createTray() {
 }
 
 function registerShortcut() {
-    const modifier = config.Hotkey?.Modifier || 'Shift';
-    const key = config.Hotkey?.Key || 'V';
+    const modifier = store.get('hotkeyModifier', 'Shift');
+    const key = store.get('hotkeyKey', 'V');
     const shortcut = `CommandOrControl+${modifier}+${key}`;
 
     try {
@@ -188,9 +183,12 @@ ipcMain.on('prompt-selected', async (event, promptData) => {
     }
 
     // API Key check
-    if (!config.API?.Key) {
-        console.error('API Key not configured in config.ini');
-        promptWindow.webContents.send('llm-response', 'Error: API Key not configured in config.ini.');
+    const apiKey = store.get('apiKey');
+    if (!apiKey) {
+        console.error('API Key not configured.');
+        // Optionally, open settings window automatically?
+        // createSettingsWindow();
+        promptWindow.webContents.send('llm-response', 'Error: API Key not configured. Please set it in Settings.');
         promptWindow.webContents.send('llm-response', '__LLM_STREAM_END__');
         capturedContent = null;
         return;
@@ -264,10 +262,12 @@ ipcMain.on('close-prompt-window', () => {
 });
 
 async function callApi(inputText, imageContent, userPrompt) {
-    const apiKey = config.API?.Key;
+    const apiKey = store.get('apiKey');
     if (!apiKey) {
         console.error('API Key is missing in callApi.');
-        throw new Error("API Key is missing.");
+        // Optionally, open settings window automatically?
+        // createSettingsWindow();
+        throw new Error("API Key is missing. Please configure it in Settings.");
     }
 
     const model = 'google/gemini-2.0-flash-001';
@@ -361,7 +361,7 @@ async function callApi(inputText, imageContent, userPrompt) {
             // Other error during request setup
             console.error('API Error Message:', error.message);
         }
-        console.error('API Config used:', { Key: config.API.Key ? 'Exists' : 'Missing' });
+        console.error('API Config used:', { Key: store.get('apiKey') ? 'Exists' : 'Missing' });
         throw error;
     }
 }
@@ -387,7 +387,7 @@ if (!gotTheLock) {
     // App initialization
     app.whenReady().then(() => {
         console.log('App ready event.');
-        readConfig();
+        // Config is read from electron-store on demand via store.get()
         console.log('Creating tray...');
         createTray();
         // createWindow(); // Main window creation is disabled
@@ -415,3 +415,46 @@ if (!gotTheLock) {
         console.log('Shortcuts unregistered. Quitting.');
     });
 }
+
+// --- Settings Window (Removed - Integrated into prompt window) ---
+
+// --- IPC Handlers for Settings ---
+
+ipcMain.handle('get-config', (event) => {
+    return {
+        apiKey: store.get('apiKey'),
+        hotkeyModifier: store.get('hotkeyModifier'),
+        hotkeyKey: store.get('hotkeyKey')
+    };
+});
+
+ipcMain.handle('set-config', (event, newConfig) => {
+    try {
+        console.log('Received new config:', newConfig);
+        if (newConfig.apiKey !== undefined) store.set('apiKey', newConfig.apiKey);
+
+        // Hotkey update requires re-registering
+        let shortcutChanged = false;
+        if (newConfig.hotkeyModifier !== undefined && newConfig.hotkeyModifier !== store.get('hotkeyModifier')) {
+            store.set('hotkeyModifier', newConfig.hotkeyModifier);
+            shortcutChanged = true;
+        }
+        if (newConfig.hotkeyKey !== undefined && newConfig.hotkeyKey !== store.get('hotkeyKey')) {
+            store.set('hotkeyKey', newConfig.hotkeyKey);
+            shortcutChanged = true;
+        }
+
+        if (shortcutChanged) {
+            console.log('Hotkey changed, re-registering...');
+            globalShortcut.unregisterAll(); // Unregister old one(s)
+            registerShortcut(); // Register new one
+        }
+        return { success: true };
+    } catch (error) {
+        console.error('Failed to set config:', error);
+        return { success: false, error: error.message };
+    }
+});
+
+// Listener to open settings from prompt window (Removed)
+// ipcMain.on('open-settings-window', () => { ... });

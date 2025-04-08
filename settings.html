@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'">
+    <title>Gemini Paste Settings</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; background-color: #f4f4f4; color: #333; }
+        .container { background-color: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #555; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; font-weight: bold; color: #666; }
+        input[type="text"], input[type="password"], select {
+            width: calc(100% - 22px); /* Account for padding */
+            padding: 10px;
+            margin-bottom: 20px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 1em;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: background-color 0.2s ease;
+        }
+        button:hover { background-color: #0056b3; }
+        .status { margin-top: 15px; font-style: italic; color: green; }
+        .error { color: red; }
+        .hotkey-group { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+        .hotkey-group label { margin-bottom: 0; }
+        .hotkey-group select, .hotkey-group input { margin-bottom: 0; width: auto; flex-grow: 1; }
+        .hotkey-plus { font-size: 1.5em; margin: 0 5px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Settings</h1>
+
+        <label for="apiKey">OpenRouter API Key:</label>
+        <input type="password" id="apiKey" placeholder="Enter your API Key">
+
+        <label>Global Hotkey:</label>
+        <div class="hotkey-group">
+             <span>Ctrl/Cmd +</span>
+             <select id="hotkeyModifier">
+                 <option value="Shift">Shift</option>
+                 <option value="Alt">Alt</option>
+                 <option value="Control">Control</option>
+                 <!-- Add other modifiers if needed, ensure they match Electron accelerator format -->
+             </select>
+             <span class="hotkey-plus">+</span>
+             <input type="text" id="hotkeyKey" maxlength="1" placeholder="Key (e.g., V)">
+        </div>
+
+
+        <button id="saveButton">Save Settings</button>
+        <div id="statusMessage" class="status"></div>
+    </div>
+
+    <script src="./settingsRenderer.js"></script>
+</body>
+</html>

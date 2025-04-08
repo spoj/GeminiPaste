@@ -18,7 +18,9 @@
   },
   "dependencies": {
     "axios": "^1.8.4",
-    "ini": "^5.0.0"
+    "electron-store": "^10.0.1",
+    "ini": "^5.0.0",
+    "marked": "^15.0.8"
   },
   "build": {
     "appId": "com.example.geminipaste",

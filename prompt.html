@@ -45,6 +45,25 @@
         .close-button:hover {
             background-color: #be5046;
         }
+        .settings-button {
+            background-color: transparent; /* Remove background */
+            color: #abb2bf; /* Use theme text color */
+            border: none;
+            /* border-radius: 50%; Remove circular shape */
+            width: auto; /* Adjust width automatically */
+            height: 18px; /* Match close button height */
+            padding: 0 4px; /* Add some horizontal padding */
+            font-size: 14px; /* Slightly larger emoji */
+            line-height: 18px; /* Match close button line-height */
+            text-align: center;
+            cursor: pointer;
+            -webkit-app-region: no-drag;
+            margin-left: 5px;
+        }
+        .settings-button:hover {
+            background-color: #3b4048; /* Subtle hover background */
+        }
+
 
         .container {
             padding: 10px 15px;
@@ -59,7 +78,7 @@
             padding: 8px;
             border-radius: 4px;
             margin-bottom: 10px;
-            max-height: 100px;
+            max-height: 200px;
             overflow-y: auto;
             font-size: 13px;
             white-space: pre-wrap;
@@ -147,10 +166,118 @@
             display: none;
         }
 
+        /* Custom Scrollbar Styles */
+        ::-webkit-scrollbar {
+            width: 8px; /* Width of the scrollbar */
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #21252b; /* Color of the tracking area */
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background-color: #61afef; /* Color of the scroll thumb */
+            border-radius: 4px; /* Roundness of the scroll thumb */
+            border: 2px solid #21252b; /* Creates padding around thumb */
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background-color: #528bce; /* Color on hover */
+        }
+
+        /* Hide scrollbar buttons (though often default in modern WebKit) */
+        ::-webkit-scrollbar-button {
+            display: none;
+        }
+ 
+        /* --- Settings View Styles --- */
+        #settings-view {
+            display: none; /* Hidden by default */
+            padding: 15px 20px;
+            flex-grow: 1;
+            overflow-y: auto;
+            background-color: #282c34; /* Match body background */
+        }
+        #settings-view h2 {
+            color: #61afef; /* Accent color for heading */
+            border-bottom: 1px solid #3b4048;
+            padding-bottom: 8px;
+            margin-top: 0;
+            margin-bottom: 20px;
+            font-size: 1.4em;
+        }
+        #settings-view label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #abb2bf; /* Theme text color */
+            font-size: 0.9em;
+        }
+        #settings-view input[type="text"],
+        #settings-view input[type="password"],
+        #settings-view select {
+            width: calc(100% - 18px); /* Account for padding */
+            padding: 8px;
+            margin-bottom: 15px;
+            border: 1px solid #3b4048; /* Darker border */
+            border-radius: 4px;
+            background-color: #21252b; /* Dark input background */
+            color: #abb2bf; /* Theme text color */
+            font-size: 0.9em;
+        }
+        #settings-view .hotkey-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+        #settings-view .hotkey-group label { margin-bottom: 0; }
+        #settings-view .hotkey-group select,
+        #settings-view .hotkey-group input {
+            margin-bottom: 0;
+            width: auto;
+            flex-grow: 1;
+        }
+        #settings-view .hotkey-plus {
+            font-size: 1.2em;
+            margin: 0 3px;
+            color: #abb2bf;
+        }
+        #settings-view button {
+            background-color: #61afef; /* Theme accent */
+            color: #282c34; /* Dark text on light button */
+            padding: 8px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: background-color 0.2s ease;
+            margin-right: 10px; /* Space between buttons */
+        }
+        #settings-view button:hover {
+            background-color: #528bce;
+        }
+        #settings-view #backButton {
+             background-color: #4b5263; /* Greyish back button */
+             color: #abb2bf;
+        }
+         #settings-view #backButton:hover {
+             background-color: #5c6370;
+         }
+        #settings-view .status {
+            margin-top: 15px;
+            font-style: italic;
+            font-size: 0.9em;
+            color: #98c379; /* Greenish status */
+        }
+        #settings-view .error { color: #e06c75; /* Reddish error */ }
+ 
     </style>
 </head>
 <body>
     <div class="window-controls">
+        <button class="settings-button" id="settings-btn" title="Settings">⚙️</button> <!-- Gear icon -->
         <button class="close-button" id="close-btn" title="Close">X</button>
     </div>
     <div class="container">
@@ -172,15 +299,46 @@
             <button id="copy-button" title="Copy output and close">Copy</button>
         </div>
     </div>
+ 
+    <!-- Settings View (Initially Hidden) -->
+    <div id="settings-view">
+        <h2>Settings</h2>
+ 
+        <label for="apiKey">OpenRouter API Key:</label>
+        <input type="password" id="apiKey" placeholder="Enter your API Key">
+ 
+        <label>Global Hotkey:</label>
+        <div class="hotkey-group">
+             <span>Ctrl/Cmd +</span>
+             <select id="hotkeyModifier">
+                 <option value="Shift">Shift</option>
+                 <option value="Alt">Alt</option>
+                 <option value="Control">Control</option>
+             </select>
+             <span class="hotkey-plus">+</span>
+             <input type="text" id="hotkeyKey" maxlength="1" placeholder="Key (e.g., V)">
+        </div>
+ 
+        <div>
+            <button id="saveButton">Save Settings</button>
+            <button id="backButton">Back</button>
+        </div>
+        <div id="statusMessage" class="status"></div>
+    </div>
 
+    <script src="./node_modules/marked/marked.min.js"></script>
     <script>
         console.log('[Renderer] Script execution started.');
         console.log('[Renderer] window.electronAPI object:', typeof window.electronAPI);
-
+ 
         // --- State Variables ---
         let initialClipboardContent = null; // Stores the { type, data } from clipboard
         let isInputEditable = false; // Tracks if #clipboard-content is currently editable
-
+        let accumulatedLLMResponse = ''; // Stores the raw Markdown response
+ 
+        // --- View State ---
+        let currentView = 'main'; // 'main' or 'settings'
+ 
         // --- IPC Listeners (Main -> Renderer) ---
 
         if (window.electronAPI?.onClipboardContent) {
@@ -201,6 +359,7 @@
 
                 // Reset UI state for new content
                 llmOutputEl.innerHTML = '';
+                accumulatedLLMResponse = ''; // Reset accumulator
                 copyButton.style.display = 'none';
                 loadingIndicator.style.display = 'none';
                 customPromptInput.disabled = false;
@@ -241,33 +400,36 @@
                 }
 
                 loadingIndicator.style.display = 'none';
-                if (responseChunk === '__LLM_STREAM_END__') {
-                    copyButton.style.display = 'block';
-                    console.log('[Renderer] LLM Stream ended.');
 
-                    // Auto-select output text
-                    if (llmOutputEl.textContent.trim().length > 0) {
-                        try {
-                            const range = document.createRange();
-                            range.selectNodeContents(llmOutputEl);
-                            const selection = window.getSelection();
-                            selection.removeAllRanges();
-                            selection.addRange(range);
-                            console.log('[Renderer] Selected output text.');
-                        } catch (err) {
-                            console.error('[Renderer] Error selecting text:', err);
-                        }
+                if (responseChunk === '__LLM_STREAM_END__') {
+                    console.log('[Renderer] LLM Stream ended. Rendering Markdown.');
+                    // Render the accumulated markdown as HTML
+                    try {
+                        // Basic sanitization (consider a more robust sanitizer if needed)
+                        const dirtyHtml = marked.parse(accumulatedLLMResponse);
+                        // A very simple sanitizer example (replace with a proper library like DOMPurify if security is critical)
+                        const cleanHtml = dirtyHtml.replace(/<script.*?>.*?<\/script>/gi, ''); // Remove script tags
+                        llmOutputEl.innerHTML = cleanHtml;
+                        llmOutputEl.scrollTop = llmOutputEl.scrollHeight; // Scroll to bottom after rendering
+                    } catch (err) {
+                        console.error('[Renderer] Error parsing Markdown:', err);
+                        llmOutputEl.textContent = 'Error rendering Markdown:\n' + accumulatedLLMResponse; // Show raw on error
                     }
+
+                    copyButton.style.display = 'block';
 
                     // Re-enable inputs after completion
                     const customPromptInput = document.getElementById('custom-prompt-input');
                     const promptButtons = document.querySelectorAll('.prompt-buttons button');
                     if(customPromptInput) customPromptInput.disabled = false;
                     promptButtons.forEach(b => b.disabled = false);
+                    if (isInputEditable) clipboardContentEl.contentEditable = 'true'; // Re-enable input editing
+
                 } else if (responseChunk) {
-                    const chunkNode = document.createTextNode(responseChunk);
-                    llmOutputEl.appendChild(chunkNode);
-                    llmOutputEl.scrollTop = llmOutputEl.scrollHeight; // Auto-scroll
+                    accumulatedLLMResponse += responseChunk; // Accumulate raw Markdown
+                    // Optional: Render incrementally (can be slow/janky for complex markdown)
+                    // llmOutputEl.innerHTML = marked.parse(accumulatedLLMResponse);
+                    // llmOutputEl.scrollTop = llmOutputEl.scrollHeight; // Auto-scroll
                 }
             });
              console.log('[Renderer] onLLMResponse listener registered.');
@@ -281,8 +443,19 @@
         const llmOutputEl = document.getElementById('llm-output');
         const copyButton = document.getElementById('copy-button');
         const closeButton = document.getElementById('close-btn');
+        const settingsButton = document.getElementById('settings-btn'); // In main view header
         const loadingIndicator = document.getElementById('loading');
         const promptButtons = document.querySelectorAll('.prompt-buttons button');
+ 
+        // --- Settings View Elements ---
+        const mainContainer = document.querySelector('.container'); // Main prompt view container
+        const settingsView = document.getElementById('settings-view');
+        const apiKeyInput = document.getElementById('apiKey');
+        const hotkeyModifierSelect = document.getElementById('hotkeyModifier');
+        const hotkeyKeyInput = document.getElementById('hotkeyKey');
+        const saveButton = document.getElementById('saveButton');
+        const backButton = document.getElementById('backButton');
+        const statusMessageEl = document.getElementById('statusMessage');
 
         // --- UI Event Listeners ---
 
@@ -300,11 +473,11 @@
         });
 
         copyButton.addEventListener('click', () => {
-            const outputText = llmOutputEl.textContent;
-            if (outputText) {
-                window.electronAPI.copyAndClose(outputText);
+            if (accumulatedLLMResponse) {
+                 console.log('[Renderer] Copying accumulated Markdown response.');
+                window.electronAPI.copyAndClose(accumulatedLLMResponse); // Copy raw Markdown
             } else {
-                 console.warn('[Renderer] Copy button clicked, but no output text found.');
+                 console.warn('[Renderer] Copy button clicked, but no accumulated response found.');
                  window.electronAPI.closeWindow(); // Close even if nothing to copy
             }
         });
@@ -313,6 +486,12 @@
             console.log('[Renderer] Close button clicked.');
             window.electronAPI.closeWindow();
         });
+
+        settingsButton.addEventListener('click', showSettingsView); // Changed action
+ 
+        backButton.addEventListener('click', showMainView);
+ 
+        saveButton.addEventListener('click', saveSettings);
 
         // Listeners moved above element selection
 
@@ -341,6 +520,7 @@
 
             // Reset output UI
             llmOutputEl.innerHTML = '';
+            accumulatedLLMResponse = ''; // Reset accumulator
             copyButton.style.display = 'none';
             loadingIndicator.style.display = 'block';
 
@@ -356,11 +536,85 @@
                 inputText: inputText
             });
         }
-
-        // Initial focus on custom prompt input when window loads
-        if(customPromptInput) {
+ 
+        // --- View Management Functions ---
+        function showMainView() {
+            console.log('[Renderer] Showing Main View');
+            settingsView.style.display = 'none';
+            mainContainer.style.display = 'flex'; // Assuming it was flex before
+            currentView = 'main';
+            // Restore focus to prompt input if returning to main view
+            if(customPromptInput) customPromptInput.focus();
+        }
+ 
+        async function showSettingsView() {
+            console.log('[Renderer] Showing Settings View');
+            mainContainer.style.display = 'none';
+            settingsView.style.display = 'block';
+            currentView = 'settings';
+            await loadSettings(); // Load settings when view is shown
+            // Focus first settings element
+            if(apiKeyInput) apiKeyInput.focus();
+        }
+ 
+        // --- Settings Load/Save Functions ---
+        async function loadSettings() {
+            console.log('[Renderer] Loading settings...');
+            statusMessageEl.textContent = 'Loading...';
+            statusMessageEl.className = 'status'; // Reset class
+            try {
+                const config = await window.electronAPI.getConfig();
+                console.log('[Renderer] Received config:', config);
+                if (config) {
+                    apiKeyInput.value = config.apiKey || '';
+                    hotkeyModifierSelect.value = config.hotkeyModifier || 'Shift';
+                    hotkeyKeyInput.value = config.hotkeyKey || 'V';
+                    statusMessageEl.textContent = ''; // Clear loading message
+                } else {
+                     throw new Error('Received empty config from main process.');
+                }
+            } catch (error) {
+                console.error('[Renderer] Error loading settings:', error);
+                statusMessageEl.textContent = `Error loading settings: ${error.message}`;
+                statusMessageEl.className = 'status error';
+            }
+        }
+ 
+        async function saveSettings() {
+            console.log('[Renderer] Saving settings...');
+            statusMessageEl.textContent = 'Saving...';
+            statusMessageEl.className = 'status'; // Reset class
+ 
+            const newConfig = {
+                apiKey: apiKeyInput.value,
+                hotkeyModifier: hotkeyModifierSelect.value,
+                hotkeyKey: hotkeyKeyInput.value.toUpperCase() // Ensure key is uppercase
+            };
+ 
+            try {
+                const result = await window.electronAPI.setConfig(newConfig);
+                console.log('[Renderer] Set config result:', result);
+                if (result && result.success) {
+                    statusMessageEl.textContent = 'Settings saved successfully!';
+                    // Optionally auto-go back after save:
+                    // setTimeout(showMainView, 1500);
+                } else {
+                    throw new Error(result?.error || 'Unknown error saving settings.');
+                }
+            } catch (error) {
+                console.error('[Renderer] Error saving settings:', error);
+                statusMessageEl.textContent = `Error saving settings: ${error.message}`;
+                statusMessageEl.className = 'status error';
+            }
+        }
+ 
+        // --- Initial Setup ---
+        // Initial focus on custom prompt input when window loads (only if starting in main view)
+        if(currentView === 'main' && customPromptInput) {
             customPromptInput.focus();
             console.log('[Renderer] Focused custom prompt input.');
+        } else if (currentView !== 'main') {
+             console.log('[Renderer] Initial view is not main, skipping initial focus.');
         } else {
              console.error('[Renderer] Cannot find custom prompt input element for focus!');
         }
