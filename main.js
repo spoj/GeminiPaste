@@ -1,25 +1,18 @@
-const { app, BrowserWindow, Tray, Menu, globalShortcut, clipboard, ipcMain } = require('electron');
-const path = require('path');
-const axios = require('axios');
-const Store = require('electron-store').default;
+import { app, BrowserWindow, Tray, Menu, globalShortcut, clipboard, ipcMain } from 'electron';
+import path from 'path';
+import fs from 'fs'; // Added for file system access
+import mime from 'mime-types'; // Added for MIME type checking
+import axios from 'axios';
+import Store from 'electron-store'; // Import directly
+import { fileURLToPath } from 'url'; // Needed for __dirname equivalent
 
+// ESM equivalent for __dirname and __filename
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+let store = null; // Will be initialized in whenReady
 let tray = null;
 let mainWindow = null;
-// Initialize electron-store with defaults
-const store = new Store({
-    defaults: {
-        apiKey: '',
-        hotkeyModifier: 'Shift',
-        hotkeyKey: 'V',
-        presetPrompts: [ // Changed to array of objects
-            { name: 'Summarize', prompt: 'Summarize' },
-            { name: 'To Table', prompt: 'Convert to a tab-separated table' },
-            { name: 'Explain', prompt: 'Explain' }
-        ],
-        model: 'google/gemini-2.0-flash-001',
-        providerOrder: ['Google']
-    }
-});
+// Store initialization will be moved to app.whenReady()
 
 // let settingsWindow = null; // Removed - Settings now in prompt window
 
@@ -93,19 +86,115 @@ let capturedContent = null;
 
 function handleHotkey() {
     try {
-        const clipboardText = clipboard.readText();
-        const clipboardImage = clipboard.readImage();
+        capturedContent = null; // Reset captured content initially
+        const formats = clipboard.availableFormats();
+        // console.log('Clipboard formats:', formats); // Keep this commented out unless debugging
 
-        if (clipboardText) {
-            capturedContent = { type: 'text', data: clipboardText };
-        } else if (!clipboardImage.isEmpty()) {
-            console.log('Clipboard has an image.');
-            const imageBase64 = clipboardImage.toDataURL();
-            capturedContent = { type: 'image', data: imageBase64 };
-        } else {
-            console.log('Clipboard is empty or has unsupported content.');
-            capturedContent = null;
-            return;
+        let filePath = null;
+
+        // Check for file paths (often text/uri-list or plain text starting with file://)
+        if (formats.includes('text/uri-list')) {
+            const uriListRaw = clipboard.read('text/uri-list');
+            // console.log(`Raw content of 'text/uri-list': [${uriListRaw}] (Length: ${uriListRaw?.length})`); // Keep commented out
+            // uri-list can contain multiple files, often newline-separated. Take the first one. Clean up potential null chars.
+            const lines = uriListRaw.replace(/\0/g, '').split(/[\r\n]+/).filter(line => line.trim() !== '' && !line.startsWith('#'));
+            if (lines.length > 0 && lines[0].startsWith('file://')) {
+                try {
+                     // Decode URI and remove 'file://' prefix. Handle platform differences.
+                     const decodedPath = decodeURI(lines[0]);
+                     filePath = process.platform === 'win32'
+                         ? decodedPath.substring('file:///'.length) // Windows: file:///C:/...
+                         : decodedPath.substring('file://'.length);  // macOS/Linux: file:///path... or file://localhost/path...
+                     console.log('Found file path in uri-list:', filePath);
+                } catch (e) {
+                     console.error('Error decoding URI:', lines[0], e);
+                     filePath = null; // Reset if decoding fails
+                }
+            }
+        }
+
+        // Fallback: Check plain text if it looks like a file path
+        if (!filePath && formats.includes('text/plain')) {
+            const text = clipboard.readText();
+            if (text.startsWith('file://')) {
+                 try {
+                     const decodedPath = decodeURI(text);
+                     filePath = process.platform === 'win32'
+                         ? decodedPath.substring('file:///'.length)
+                         : decodedPath.substring('file://'.length);
+                     console.log('Found file path in plain text:', filePath);
+                 } catch (e) {
+                     console.error('Error decoding URI from text:', text, e);
+                     filePath = null;
+                 }
+            } else {
+                 const trimmedText = text.trim(); // Trim whitespace
+                 if (fs.existsSync(trimmedText)) { // Check if trimmed plain text IS a valid path directly
+                     filePath = trimmedText;
+                     console.log('Found potential file path in plain text (direct, trimmed):', filePath);
+                 }
+            }
+        }
+
+
+        // --- Process File Path if Found ---
+        if (filePath && fs.existsSync(filePath)) {
+            try {
+                const stats = fs.statSync(filePath);
+                if (stats.isFile()) {
+                    const fileSize = stats.size;
+                    const mimeType = mime.lookup(filePath) || 'application/octet-stream'; // Get MIME type
+                    console.log(`File detected: ${filePath}, Size: ${fileSize}, MIME: ${mimeType}`);
+
+                    // Check for supported image types
+                    if (mimeType.startsWith('image/')) {
+                        const fileBuffer = fs.readFileSync(filePath);
+                        const base64 = fileBuffer.toString('base64');
+                        const dataUrl = `data:${mimeType};base64,${base64}`;
+                        capturedContent = { type: 'image', data: dataUrl };
+                        console.log('Captured file as image.');
+                    }
+                    // Check for supported text types (e.g., text/plain) and size limit
+                    else if (mimeType.startsWith('text/') && fileSize < 100 * 1024) { // 100KB limit
+                        const textContent = fs.readFileSync(filePath, 'utf8');
+                        capturedContent = { type: 'text', data: textContent };
+                        console.log('Captured file as text.');
+                    } else {
+                        console.log(`File type (${mimeType}) or size (${fileSize}) not supported for direct input.`);
+                        // Optionally: Provide feedback to the user?
+                    }
+                } else {
+                     console.log(`Path exists but is not a file: ${filePath}`);
+                }
+            } catch (err) {
+                console.error(`Error processing file path ${filePath}:`, err);
+                capturedContent = null; // Ensure it's null on error
+            }
+        }
+
+        // --- Fallback to Standard Clipboard Read if No Supported File Found ---
+        if (!capturedContent) {
+            console.log('No supported file captured, checking standard clipboard content...');
+            const clipboardText = clipboard.readText();
+            const clipboardImage = clipboard.readImage(); // Read image only if text isn't primary
+
+            if (clipboardText && !filePath) { // Prioritize text unless a file path was specifically copied
+                capturedContent = { type: 'text', data: clipboardText };
+                 console.log('Captured standard clipboard text.');
+            } else if (!clipboardImage.isEmpty()) {
+                console.log('Captured standard clipboard image.');
+                const imageBase64 = clipboardImage.toDataURL();
+                capturedContent = { type: 'image', data: imageBase64 };
+            } else {
+                console.log('Clipboard is empty or has unsupported content (after file check).');
+                // capturedContent remains null
+            }
+        }
+
+        // --- Show Window or Send Content ---
+        if (!capturedContent) {
+             console.log('No capturable content found.');
+             return; // Exit if nothing was captured
         }
 
         if (promptWindow && !promptWindow.isDestroyed()) {
@@ -133,7 +222,7 @@ function createPromptWindow() {
 
     promptWindow = new BrowserWindow({
         width: 450,
-        height: 400,
+        height: 600,
         frame: false,
         resizable: true,
         alwaysOnTop: true,
@@ -165,6 +254,13 @@ function createPromptWindow() {
     promptWindow.on('closed', () => {
         console.log('Prompt window closed.');
         promptWindow = null;
+    });
+    // Close window on Escape key press
+    promptWindow.webContents.on('before-input-event', (event, input) => {
+        if (input.type === 'keyDown' && input.key === 'Escape') {
+            console.log('Escape key pressed, closing prompt window.');
+            promptWindow?.close(); // Use optional chaining in case it's already closing
+        }
     });
 }
 
@@ -285,41 +381,46 @@ async function callApi(inputText, imageContent, userPrompt) {
     // Construct messages array (OpenAI format)
     let messages = [];
 
-    // System message (User's selected/typed prompt)
-    if (userPrompt) { // Ensure prompt isn't empty
-        messages.push({ role: "system", content: userPrompt });
-    }
-
-    // User message (prompt + content)
-    let userMessageContent = [];
-
-    // User prompt is now sent as system message, removed from here.
+    // --- Message 1: Input Content (Text or Image) ---
+    let inputMessageContent = [];
+    let contentProvided = false;
 
     // Add clipboard text (if provided)
     if (inputText) {
-        userMessageContent.push({ type: "text", text: inputText });
+        inputMessageContent.push({ type: "text", text: inputText });
         console.log('Preparing text content for API, length:', inputText.length);
+        contentProvided = true;
     }
 
     // Add clipboard image (if provided)
     if (imageContent?.type === 'image') {
         // Assumes imageContent.data is a base64 data URL
-        userMessageContent.push({
+        inputMessageContent.push({
             type: "image_url",
             image_url: {
                 url: imageContent.data
             }
         });
         console.log('Preparing image content for API, mime-type inferred from data URL.');
+        contentProvided = true;
     }
 
-    // Ensure some content (text or image) was added
-    if (userMessageContent.length === 0) { // Check if anything was added (text or image)
+    // Ensure some content (text or image) was added for the first message
+    if (!contentProvided) {
          console.error('No text or image content provided for API call.');
          throw new Error("No text or image content provided for API call.");
     }
+    messages.push({ role: "user", content: inputMessageContent });
 
-    messages.push({ role: "user", content: userMessageContent });
+
+    // --- Message 2: User Prompt ---
+    if (userPrompt) { // Ensure prompt isn't empty
+        messages.push({ role: "user", content: userPrompt });
+        console.log('Adding user prompt as second message:', userPrompt);
+    } else {
+        console.warn('User prompt is empty, sending only input content.');
+        // Decide if an empty prompt is an error or acceptable. Currently acceptable.
+    }
 
     const requestBody = {
         model: model,
@@ -393,15 +494,31 @@ if (!gotTheLock) {
     });
 
     // App initialization
-    app.whenReady().then(() => {
+    app.whenReady().then(() => { // No longer need async here
         console.log('App ready event.');
-        // Config is read from electron-store on demand via store.get()
+        // Initialize electron-store here
+        console.log('Initializing electron-store...');
+        store = new Store({ // Use the Store imported at the top
+            defaults: {
+                apiKey: '',
+                hotkeyModifier: 'Shift',
+                hotkeyKey: 'V',
+                presetPrompts: [ // Changed to array of objects
+                    { name: 'Summarize', prompt: 'Summarize' },
+                    { name: 'To Table', prompt: 'Convert to a tab-separated table' },
+                    { name: 'Explain', prompt: 'Explain' }
+                ],
+                model: 'google/gemini-2.0-flash-001',
+                providerOrder: ['Google']
+            }
+        });
+        console.log('electron-store initialized successfully.');
+
         console.log('Creating tray...');
         createTray();
         // createWindow(); // Main window creation is disabled
         console.log('Registering shortcut...');
         registerShortcut();
-
         app.on('activate', () => { // macOS dock support
             console.log('App activate event (macOS).');
             // Show main window if it exists (currently unused)
@@ -429,6 +546,8 @@ if (!gotTheLock) {
 // --- IPC Handlers for Settings ---
 
 ipcMain.handle('get-config', (event) => {
+    // Ensure store is initialized before accessing
+    if (!store) return { error: 'Store not ready' };
     return {
         apiKey: store.get('apiKey'),
         hotkeyModifier: store.get('hotkeyModifier'),
@@ -440,6 +559,8 @@ ipcMain.handle('get-config', (event) => {
 });
 
 ipcMain.handle('set-config', (event, newConfig) => {
+    // Ensure store is initialized before accessing
+    if (!store) return { success: false, error: 'Store not ready' };
     try {
         console.log('Received new config:', newConfig);
         if (newConfig.apiKey !== undefined) store.set('apiKey', newConfig.apiKey);
