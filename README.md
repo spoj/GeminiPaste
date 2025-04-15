@@ -22,7 +22,7 @@ Let's say this is copied into your clipboard. in this case it's an image.
 
 ![Input Content](screenshots/clipcontent_input.png)
 
-After pressing the hotkey, the prompt window appears. Here I've already pressed the "To table" canned prompt and the result is shown.
+After pressing the hotkey, the prompt window appears, capturing the clipboard content in the input area. Here I've already pressed the "To table" canned prompt and the result is shown.
 
 ![Main Window](screenshots/main_window.png)
 
