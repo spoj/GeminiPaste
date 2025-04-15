@@ -19,15 +19,19 @@ GeminiPaste Helper is a lightweight Electron application that runs in your syste
 ## Example
 
 Let's say this is copied into your clipboard. in this case it's an image.
+
 ![Input Content](screenshots/clipcontent_input.png)
 
 After pressing the hotkey, the prompt window appears. Here I've already pressed the "To table" canned prompt and the result is shown.
+
 ![Main Window](screenshots/main_window.png)
 
 Since this is tab separated table, can paste into Excel directly.
+
 ![Output Example](screenshots/paste_table_in_excel.png)
 
 Additional settings:
+
 ![Settings Screen](screenshots/settings_screen.png)
 
 
